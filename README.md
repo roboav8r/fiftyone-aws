@@ -43,56 +43,187 @@ fiftyone plugins download https://github.com/roboav8r/fiftyone-aws
 
 ### FiftyOne Teams (Enterprise)
 
-For FiftyOne Teams deployments, the plugin must be installed into the application server's Docker image and registered via environment variables.
+For FiftyOne Teams deployments, the plugin dependencies must be installed into a custom Docker image. The custom image is then used for the `teams-plugins` and `teams-do` services via a compose override file.
 
-#### Docker Image
+See the [FiftyOne Teams Docker deployment guide](https://github.com/voxel51/fiftyone-teams-app-deploy/blob/main/docker/README.md) for full reference.
 
-Create a custom Dockerfile that extends the FiftyOne Teams App image:
+#### 1. Build a Custom Docker Image
+
+Create a `Dockerfile` that extends your base FiftyOne Teams image with the plugin's dependencies:
 
 ```dockerfile
-FROM voxel51/fiftyone-teams-app:latest
+ARG BASE_IMAGE
 
-# Install plugin dependencies
-# Note: sagemaker has a protobuf dependency that can conflict with fiftyone.
-# Install with --no-deps and add only the needed sub-dependencies.
-RUN pip install \
-    boto3>=1.28.0 \
-    pyyaml>=6.0 \
-    ultralytics>=8.3.0 && \
-    pip install --no-deps sagemaker==2.254.1 && \
-    pip install schema docker pathos
+FROM ${BASE_IMAGE}
 
-# Copy plugin into the container
-COPY . /opt/plugins/fiftyone-aws/
+# Install dependencies
+RUN pip install --no-cache-dir \
+    boto3 \
+    python-dotenv \
+    pyyaml \
+    wandb
+
+# Remove any existing sagemaker packages that might conflict
+RUN pip uninstall -y sagemaker sagemaker-core || true
+
+# Clean up any leftover sagemaker directories
+RUN rm -rf /opt/fiftyone-teams-app/lib/python3.11/site-packages/sagemaker* || true
+
+# Now install fresh
+RUN pip install --no-cache-dir sagemaker==2.254.1
+
+# Verify import
+RUN python -c "import sagemaker; print('sagemaker', sagemaker.__version__)"
 ```
 
-Build and push:
+Build the image, passing your base FiftyOne Teams image as a build arg:
 
 ```shell
-docker build -t my-registry/fiftyone-teams-app:latest .
-docker push my-registry/fiftyone-teams-app:latest
+docker build \
+    --no-cache \
+    --build-arg BASE_IMAGE="voxel51/fiftyone-teams-cv-full:v2.16.0" \
+    -t my-fiftyone-sagemaker:v2.16.0 \
+    .
 ```
 
-#### Docker Compose
+#### 2. Configure Docker Compose Override
 
-Add the plugin directory and environment variables to your `docker-compose.yml`:
+In your FiftyOne Teams deployment directory, update `compose.override.yaml` to use the custom image for the `teams-plugins` and `teams-do` services (which execute plugin code and delegated operators):
 
 ```yaml
 services:
-  fiftyone-app:
-    image: my-registry/fiftyone-teams-app:latest
-    environment:
-      - FIFTYONE_PLUGINS_DIR=/opt/plugins
+  teams-plugins:
+    image: my-fiftyone-sagemaker:v2.16.0
+    pull_policy: never  # if using a locally-built image
+
+  teams-do:
+    image: my-fiftyone-sagemaker:v2.16.0
+    pull_policy: never  # if using a locally-built image
+```
+
+> **Note:** The `fiftyone-app` service does not need the custom image -- only `teams-plugins` (runs plugin UI code) and `teams-do` (runs delegated operators) need the SageMaker dependencies.
+
+#### 3. Restart Services
+
+Bring the stack down and back up with all compose files:
+
+```shell
+docker compose down
+
+docker compose \
+    -f compose.yaml \
+    -f compose.delegated-operators.yaml \
+    -f compose.dedicated-plugins.yaml \
+    -f compose.override.yaml \
+    up -d
+```
+
+#### 4. Install the Plugin
+
+Once the services are running, install the plugin from GitHub using the FiftyOne CLI or the App's plugin management UI:
+
+```shell
+fiftyone plugins download https://github.com/roboav8r/fiftyone-aws
 ```
 
 #### Kubernetes (Helm)
 
-In your Helm values file:
+For Helm-based deployments, build and push the custom image to a registry accessible from your cluster, then configure `values.yaml` to use it for the dedicated plugins and delegated operator deployments.
+
+See the [FiftyOne Teams Helm deployment guide](https://github.com/voxel51/fiftyone-teams-app-deploy/tree/main/helm) for full reference, including [plugin configuration](https://github.com/voxel51/fiftyone-teams-app-deploy/blob/main/helm/docs/configuring-plugins.md) and [delegated operator configuration](https://github.com/voxel51/fiftyone-teams-app-deploy/blob/main/helm/docs/configuring-delegated-operators.md).
+
+**1. Build and push the custom image** (same Dockerfile as Docker Compose):
+
+```shell
+docker build \
+    --no-cache \
+    --build-arg BASE_IMAGE="voxel51/fiftyone-teams-cv-full:v2.16.0" \
+    -t my-registry/fiftyone-sagemaker:v2.16.0 \
+    .
+
+docker push my-registry/fiftyone-sagemaker:v2.16.0
+```
+
+**2. Configure dedicated plugins** in `values.yaml`:
 
 ```yaml
-appSettings:
+pluginsSettings:
+  enabled: true
+  image:
+    repository: my-registry/fiftyone-sagemaker
+    tag: v2.16.0
   env:
     FIFTYONE_PLUGINS_DIR: /opt/plugins
+
+apiSettings:
+  env:
+    FIFTYONE_PLUGINS_DIR: /opt/plugins
+```
+
+Mount a PersistentVolumeClaim with `ReadWrite` access to `teams-api` and `ReadOnly` access to `teams-plugins` at the `FIFTYONE_PLUGINS_DIR` path. See [plugins-storage.md](https://github.com/voxel51/fiftyone-teams-app-deploy/blob/main/helm/docs/plugins-storage.md) for PVC configuration.
+
+**3. Configure delegated operators** in `values.yaml`.
+
+For always-on executors (`delegatedOperatorDeployments`):
+
+```yaml
+delegatedOperatorDeployments:
+  deployments:
+    teamsDo:
+      image:
+        repository: my-registry/fiftyone-sagemaker
+        tag: v2.16.0
+      env:
+        FIFTYONE_PLUGINS_DIR: /opt/plugins
+      volumes:
+        - name: plugins-vol
+          persistentVolumeClaim:
+            claimName: plugins-pvc
+            readOnly: true
+      volumeMounts:
+        - name: plugins-vol
+          mountPath: /opt/plugins
+```
+
+For on-demand executors (`delegatedOperatorJobTemplates`):
+
+```yaml
+delegatedOperatorJobTemplates:
+  template:
+    image:
+      repository: my-registry/fiftyone-sagemaker
+      tag: v2.16.0
+    env:
+      FIFTYONE_PLUGINS_DIR: /opt/plugins
+    volumes:
+      - name: plugins-vol
+        persistentVolumeClaim:
+          claimName: plugins-pvc
+          readOnly: true
+    volumeMounts:
+      - name: plugins-vol
+        mountPath: /opt/plugins
+  jobs:
+    teamsDoCpuDefaultK8s: {}
+```
+
+**4. Deploy or upgrade:**
+
+```shell
+helm repo add voxel51 https://helm.fiftyone.ai
+helm repo update voxel51
+
+# New install
+helm install fiftyone-teams-app voxel51/fiftyone-teams-app -f values.yaml
+
+# Or upgrade existing
+helm upgrade fiftyone-teams-app voxel51/fiftyone-teams-app -f values.yaml
+```
+
+**5. Install the plugin** once the pods are running:
+
+```shell
+fiftyone plugins download https://github.com/roboav8r/fiftyone-aws
 ```
 
 ## Secrets Configuration
@@ -204,13 +335,14 @@ This plugin was designed for use on classified AWS networks (GovCloud, IC region
 - Check that `fiftyone.yml` is present in the plugin directory
 - Restart the FiftyOne App server after installing the plugin
 
-### SageMaker SDK protobuf conflict
+### SageMaker SDK conflicts in Docker image
 
-When installing in a FiftyOne Teams Docker image, install `sagemaker` with `--no-deps` to avoid protobuf version conflicts:
+The `sagemaker` package can conflict with packages already installed in the FiftyOne Teams base image. If you see import errors, ensure your Dockerfile removes existing sagemaker packages before installing fresh:
 
-```shell
-pip install --no-deps sagemaker==2.254.1
-pip install schema docker pathos
+```dockerfile
+RUN pip uninstall -y sagemaker sagemaker-core || true
+RUN rm -rf /opt/fiftyone-teams-app/lib/python3.11/site-packages/sagemaker* || true
+RUN pip install --no-cache-dir sagemaker==2.254.1
 ```
 
 ## License
