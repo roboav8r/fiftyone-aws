@@ -1,0 +1,7 @@
+# YOLO Training Script Dependencies
+# These are installed in the SageMaker training container
+
+ultralytics>=8.3.0
+wandb>=0.18.0
+pyyaml>=6.0
+python-dotenv>=1.0.0

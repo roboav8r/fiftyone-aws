@@ -1,0 +1,55 @@
+# Plugin config (may contain site-specific values)
+default_config.yaml
+
+# Environment
+.env
+.env.local
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing
+test_data/
+test_output/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# AWS
+*.pem
+credentials
+
+# SageMaker local outputs
+/opt/ml/
+
+# Ultralytics training outputs
+runs/
+
+# Model artifacts
+*.pt
+*.onnx
+model.tar.gz
+
+# W&B
+wandb/
+
+# Temporary files
+*.tmp
+*.temp

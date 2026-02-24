@@ -1,0 +1,27 @@
+name: "@roboav8r/fiftyone-aws"
+type: plugin
+version: "1.0.0"
+description: "Train YOLO26 models on AWS SageMaker with full configuration options for classified networks"
+
+requirements:
+  - boto3>=1.28.0
+  - sagemaker==2.254.1
+  - pyyaml>=6.0
+  - ultralytics>=8.3.0
+
+secrets:
+  - AWS_ACCESS_KEY_ID
+  - AWS_SECRET_ACCESS_KEY
+  - WANDB_API_KEY
+
+operators:
+  - launch_sagemaker_training
+  - get_training_job_status
+  - list_training_jobs
+  - download_model_artifacts
+  - stop_training_job
+  - apply_split_tags
+  - apply_yolo_model
+
+panels:
+  - sagemaker_panel

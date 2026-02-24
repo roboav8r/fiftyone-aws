@@ -1,0 +1,62 @@
+# YOLO SageMaker Plugin - Default Configuration
+# Copy this file to default_config.yaml and fill in your values.
+# The operator will use these as default values in the UI.
+
+# === AWS Configuration ===
+# NOTE: AWS credentials (access key, secret key) and W&B API key are managed
+# via FiftyOne Secrets Manager (Teams) or environment variables (open-source).
+# See README.md for setup instructions.
+aws:
+  region: us-east-1
+  # AWS CLI profile (for local development)
+  profile: ""
+
+# === SageMaker Configuration ===
+sagemaker:
+  # Required
+  image_uri: ""  # e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1.0-gpu-py310
+  role: ""  # e.g., arn:aws:iam::123456789012:role/SageMakerExecutionRole
+  bucket: ""  # e.g., my-sagemaker-bucket
+
+  # Instance configuration
+  instance_type: ml.g4dn.xlarge
+  instance_count: 1
+
+  # VPC configuration (optional, required for classified networks)
+  subnets: ""  # Comma-separated, e.g., subnet-12345,subnet-67890
+  security_group_ids: ""  # Comma-separated, e.g., sg-12345
+
+  # Optional paths (auto-generated if empty)
+  output_path: ""  # e.g., s3://my-bucket/output
+  code_location: ""  # e.g., s3://my-bucket/code
+  base_job_name: yolo26-training
+
+  # Resource tags (comma-separated key=value pairs)
+  tags: ""  # e.g., project=yolo,team=ml
+
+  # Profiler settings
+  disable_profiler: true
+  enable_sagemaker_metrics: false
+
+# === Dataset Configuration ===
+dataset:
+  label_field: ground_truth
+
+# === Training Hyperparameters ===
+training:
+  model: yolo26n.pt  # Options: yolo26n.pt, yolo26s.pt, yolo26m.pt, yolo26l.pt, yolo26x.pt
+  epochs: 100
+  batch_size: 16
+  imgsz: 640
+  lr0: 0.01
+  patience: 50
+
+  # Data splits
+  split_train: 0.8
+  split_val: 0.1
+  split_test: 0.1
+
+# === Weights & Biases (optional) ===
+# NOTE: WANDB_API_KEY is managed via FiftyOne Secrets Manager or environment variables.
+wandb:
+  project: ""
