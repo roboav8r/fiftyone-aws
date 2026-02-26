@@ -29,9 +29,27 @@ A [FiftyOne](https://docs.voxel51.com/) plugin for training YOLO models on AWS S
 
 The **SageMaker Trainer** panel provides a tabbed interface:
 
-- **Train**: Configure AWS, instance, training hyperparameters, and data splits. Launch jobs with one click.
-- **Monitor**: List recent jobs, view detailed status, metrics, and stop running jobs.
-- **Apply Model**: Load trained weights (from local path or completed job) and run inference on your dataset.
+### Train
+
+Configure AWS, instance, training hyperparameters, and data splits. Launch jobs with one click.
+
+![Train tab](assets/train.gif)
+
+### Monitor
+
+List recent jobs, view detailed status, metrics, and stop running jobs.
+
+![Monitor tab](assets/monitor.gif)
+
+Training jobs are also visible in the FiftyOne Runs page:
+
+![Run status](assets/runs.png)
+
+### Apply Model
+
+Load trained weights (from local path or completed job) and run inference on your dataset.
+
+![Apply Model tab](assets/apply.gif)
 
 ## Installation
 
